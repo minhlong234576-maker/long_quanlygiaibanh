@@ -1,57 +1,73 @@
 {% extends "base.html" %}
 {% block title %}Tổng quan{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h4 class="mb-0">{{ giai.TenGiai }}
-    <span class="badge text-bg-{{ 'success' if giai.TrangThai=='ĐANG DIỄN RA' else 'secondary' }}">{{ giai.TrangThai }}</span></h4>
-  <small class="text-muted">Khai mạc {{ giai.NgayKhaiMac }} · Bế mạc {{ giai.NgayBeMac }}</small>
-</div>
+<section class="page-header">
+  <div>
+    <h1 class="page-title">{{ giai.TenGiai }}</h1>
+    <p class="page-subtitle">Bảng điều hành nhanh cho mùa giải hiện tại, theo dõi trạng thái thi đấu và các chỉ số quan trọng.</p>
+  </div>
+  <div class="hero-meta">
+    <span class="badge text-bg-{{ 'success' if giai.TrangThai=='ĐANG DIỄN RA' else 'secondary' }}">{{ giai.TrangThai }}</span>
+    <span>Khai mạc {{ giai.NgayKhaiMac }}</span>
+    <span>Bế mạc {{ giai.NgayBeMac }}</span>
+  </div>
+</section>
 
-<div class="row g-3 mb-4">
-  {% for label, val, icon in [("CLB tham dự", stats.so_clb, "🏟️"), ("Cầu thủ", stats.so_cauthu, "👟"),
-                              ("Trận đấu", stats.so_tran, "📅"), ("Bàn thắng", stats.so_ban, "⚽"),
-                              ("Thẻ phạt", stats.so_the, "🟨")] %}
-  <div class="col"><div class="card stat-card text-center p-3">
-    <div class="display-6">{{ icon }} {{ val }}</div><div class="text-muted small">{{ label }}</div></div></div>
+<div class="kpi-grid mb-4">
+  {% for label, val, icon, tone in [("CLB tham dự", stats.so_clb, "🏟️", "kpi-primary"), ("Cầu thủ", stats.so_cauthu, "👟", "kpi-blue"),
+                              ("Trận đấu", stats.so_tran, "📅", "kpi-amber"), ("Bàn thắng", stats.so_ban, "⚽", "kpi-primary"),
+                              ("Thẻ phạt", stats.so_the, "🟨", "kpi-red")] %}
+  <div class="kpi-card {{ tone }}">
+    <div class="kpi-card-body">
+      <span class="kpi-icon" aria-hidden="true">{{ icon }}</span>
+      <span class="kpi-info">
+        <span class="kpi-value d-block">{{ val }}</span>
+        <span class="kpi-label d-block">{{ label }}</span>
+      </span>
+    </div>
+  </div>
   {% endfor %}
 </div>
 
 <div class="row g-4">
   <div class="col-lg-7">
-    <div class="card p-3">
-      <h5 class="mb-3">Trận đấu sắp diễn ra / đang trực tiếp</h5>
-      <table class="table table-hover align-middle mb-0">
-        <thead><tr><th>Vòng</th><th>Đội nhà</th><th style="width:90px">Kết quả</th><th>Đội khách</th><th>Giờ</th><th>Trạng thái</th></tr></thead>
-        <tbody>
-        {% for t in tran_live %}
-          <tr>
-            <td class="small text-muted">{{ t.TenVong }}</td>
-            <td class="text-end fw-semibold">{{ t.doi_nha }}</td>
-            <td class="text-center">
-              <a class="btn btn-sm btn-outline-dark" href="{{ url_for('tran', mid=t.MaTranDau) }}">—</a></td>
-            <td>{{ t.doi_khach }}</td>
-            <td class="small">{{ t.NgayGioThiDau }}</td>
-            <td>{% if t.TrangThai == 'ĐANG ĐÁ' %}<span class="st st-DANG"><span class="live-dot"></span> TRỰC TIẾP</span>
-                {% elif t.TrangThai == 'HOÃN' %}<span class="st st-HOAN">HOÃN</span>
-                {% else %}<span class="st st-CHUA">CHƯA ĐÁ</span>{% endif %}</td>
-          </tr>
-        {% else %}<tr><td colspan="6" class="text-muted text-center">Không có trận nào.</td></tr>{% endfor %}
-        </tbody>
-      </table>
+    <div class="card app-card table-card">
+      <h5 class="panel-title">Trận đấu sắp diễn ra / đang trực tiếp</h5>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead><tr><th>Vòng</th><th>Đội nhà</th><th style="width:90px">Kết quả</th><th>Đội khách</th><th>Giờ</th><th>Trạng thái</th></tr></thead>
+          <tbody>
+          {% for t in tran_live %}
+            <tr>
+              <td class="small text-muted">{{ t.TenVong }}</td>
+              <td class="text-end fw-semibold">{{ t.doi_nha }}</td>
+              <td class="text-center"><a class="score-chip" href="{{ url_for('tran', mid=t.MaTranDau) }}">—</a></td>
+              <td>{{ t.doi_khach }}</td>
+              <td class="small">{{ t.NgayGioThiDau }}</td>
+              <td>{% if t.TrangThai == 'ĐANG ĐÁ' %}<span class="st st-DANG"><span class="live-dot"></span> TRỰC TIẾP</span>
+                  {% elif t.TrangThai == 'HOÃN' %}<span class="st st-HOAN">HOÃN</span>
+                  {% else %}<span class="st st-CHUA">CHƯA ĐÁ</span>{% endif %}</td>
+            </tr>
+          {% else %}<tr><td colspan="6" class="text-muted text-center">Không có trận nào.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
   <div class="col-lg-5">
-    <div class="card p-3">
-      <h5 class="mb-3">🥇 Vua phá lưới (top 5)</h5>
-      <table class="table table-sm mb-0">
-        <tbody>
-        {% for c in top_scorers %}
-          <tr><td>{{ c.Logo or '⚽' }} <a href="{{ url_for('tim_kiem', q=c.HoTen) }}">{{ c.HoTen }}</a>
-            <span class="text-muted small">({{ c.CLB }})</span></td>
-            <td class="text-end fw-bold">{{ c.BanThang }} bàn</td></tr>
-        {% else %}<tr><td class="text-muted">Chưa có dữ liệu.</td></tr>{% endfor %}
-        </tbody>
-      </table>
+    <div class="card app-card p-3">
+      <h5 class="panel-title">🥇 Vua phá lưới (top 5)</h5>
+      <div class="table-responsive">
+        <table class="table table-sm">
+          <tbody>
+          {% for c in top_scorers %}
+            <tr><td>{{ c.Logo or '⚽' }} <a href="{{ url_for('tim_kiem', q=c.HoTen) }}">{{ c.HoTen }}</a>
+              <span class="text-muted small">({{ c.CLB }})</span></td>
+              <td class="text-end fw-bold">{{ c.BanThang }} bàn</td></tr>
+          {% else %}<tr><td class="text-muted">Chưa có dữ liệu.</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
       <a class="btn btn-sm btn-outline-success mt-2" href="{{ url_for('thong_ke') }}">Xem thống kê đầy đủ →</a>
     </div>
   </div>

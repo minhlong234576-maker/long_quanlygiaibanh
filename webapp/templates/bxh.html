@@ -1,10 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Bảng xếp hạng{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <h4 class="mb-0">🏆 Bảng xếp hạng
-    {% if vong %}<small class="text-muted fs-6">— {{ vong.TenVong }} ({{ vong.GiaiDoan }})</small>{% endif %}</h4>
-  <div class="d-flex gap-2">
+<section class="page-header">
+  <div>
+    <h1 class="page-title">🏆 Bảng xếp hạng</h1>
+    <p class="page-subtitle">
+      Theo dõi vị trí các câu lạc bộ theo điểm số, hiệu số và chỉ số fair-play.
+      {% if vong %}Dữ liệu hiện tại đang hiển thị cho {{ vong.TenVong }} ({{ vong.GiaiDoan }}).{% endif %}
+    </p>
+  </div>
+  <div class="page-toolbar">
     <form class="d-flex gap-2" method="get">
       <select class="form-select form-select-sm" name="giai" onchange="this.form.submit()">
         {% for g in gias %}<option value="{{ g.MaGiaiDau }}" {{ 'selected' if g.MaGiaiDau==ma_giai }}>
@@ -18,37 +23,39 @@
     </form>
     {% endif %}
   </div>
-</div>
-<div class="card p-2">
-<table class="table table-hover align-middle mb-0">
-  <thead><tr>
-    <th>#</th><th>Câu lạc bộ</th><th>Sân nhà</th><th class="text-center">Trận</th>
-    <th class="text-center">T</th><th class="text-center">H</th><th class="text-center">B</th>
-    <th class="text-center">BT</th><th class="text-center">BT thua</th><th class="text-center">HS</th>
-    <th class="text-center">Điểm</th><th class="text-center">Fair-play</th></tr></thead>
-  <tbody>
-  {% for r in ds %}
-    <tr class="{{ 'rank-' ~ r.ThuHang if r.ThuHang <= 3 }}">
-      <td><span class="rank-badge">{{ r.ThuHang }}</span></td>
-      <td><a class="fw-semibold text-decoration-none" href="{{ url_for('tim_kiem', q=r.TenCLB) }}">{{ r.Logo }} {{ r.TenVietTom }}</a>
-        <span class="text-muted small d-block">{{ r.TenCLB }}</span></td>
-      <td class="small text-muted">{{ r.TenSan }}</td>
-      <td class="text-center">{{ r.SoTranDaDau }}</td>
-      <td class="text-center text-success fw-bold">{{ r.SoTranThang }}</td>
-      <td class="text-center">{{ r.SoTranHoa }}</td>
-      <td class="text-center text-danger">{{ r.SoTranThua }}</td>
-      <td class="text-center">{{ r.TongBanThang }}</td>
-      <td class="text-center">{{ r.TongBanThua }}</td>
-      <td class="text-center">{{ '%+d'|format(r.TongBanThang - r.TongBanThua) }}</td>
-      <td class="text-center fw-bold fs-5">{{ r.SoTranThang*3 + r.SoTranHoa }}</td>
-      <td class="text-center small">−{{ r.DiemFairPlay }}</td>
-    </tr>
-  {% else %}
-    <tr><td colspan="12" class="text-center text-muted py-4">Chưa có dữ liệu xếp hạng cho giải này.
-      {% if can_edit %}Bấm “Kết xuất lại BXH” sau khi các trận đã chốt.{% endif %}</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
+</section>
+<div class="card app-card table-card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead><tr>
+        <th>#</th><th>Câu lạc bộ</th><th>Sân nhà</th><th class="text-center">Trận</th>
+        <th class="text-center">T</th><th class="text-center">H</th><th class="text-center">B</th>
+        <th class="text-center">BT</th><th class="text-center">BT thua</th><th class="text-center">HS</th>
+        <th class="text-center">Điểm</th><th class="text-center">Fair-play</th></tr></thead>
+      <tbody>
+      {% for r in ds %}
+        <tr class="{{ 'rank-' ~ r.ThuHang if r.ThuHang <= 3 }}">
+          <td><span class="rank-badge">{{ r.ThuHang }}</span></td>
+          <td><a class="fw-semibold text-decoration-none" href="{{ url_for('tim_kiem', q=r.TenCLB) }}">{{ r.Logo }} {{ r.TenVietTom }}</a>
+            <span class="text-muted small d-block">{{ r.TenCLB }}</span></td>
+          <td class="small text-muted">{{ r.TenSan }}</td>
+          <td class="text-center">{{ r.SoTranDaDau }}</td>
+          <td class="text-center text-success fw-bold">{{ r.SoTranThang }}</td>
+          <td class="text-center">{{ r.SoTranHoa }}</td>
+          <td class="text-center text-danger">{{ r.SoTranThua }}</td>
+          <td class="text-center">{{ r.TongBanThang }}</td>
+          <td class="text-center">{{ r.TongBanThua }}</td>
+          <td class="text-center">{{ '%+d'|format(r.TongBanThang - r.TongBanThua) }}</td>
+          <td class="text-center fw-bold fs-5">{{ r.SoTranThang*3 + r.SoTranHoa }}</td>
+          <td class="text-center small">−{{ r.DiemFairPlay }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="12" class="text-center text-muted py-4">Chưa có dữ liệu xếp hạng cho giải này.
+          {% if can_edit %}Bấm “Kết xuất lại BXH” sau khi các trận đã chốt.{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 <p class="text-muted small mt-2">Xếp hạng theo: Điểm → Hiệu số bàn thắng bại → Tổng bàn thắng → Điểm fair-play (thẻ vàng −1, thẻ đỏ −3). Dữ liệu được tổng hợp tự động từ các trận ĐÃ KẾT THÚC.</p>
 {% endblock %}

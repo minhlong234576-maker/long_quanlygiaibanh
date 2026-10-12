@@ -1,12 +1,12 @@
-"""Webapp Quản lý Giải vô địch Bóng đá Quốc gia (V-League) - Flask + SQLite.
+"""Webapp Quản lý Giải vô địch Bóng đá Quốc gia (V-League) - Flask + SQL Server.
 
-Chạy:   python3 webapp/app.py     ->  http://localhost:5000
+Chạy:   python webapp/app.py     ->  http://localhost:5000
 Login demo (mật khẩu 123456): admin / kyluat / giaisat / xem
 Phân quyền: ADMIN (quản trị + CRUD danh mục), CAPNHAT (cập nhật trận đấu, sự kiện, BXH), XEM (tra cứu).
 """
 import math
 import os
-import sqlite3
+import pyodbc
 from functools import wraps
 
 from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,
@@ -14,17 +14,25 @@ from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE, "app.db")
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "vleague-demo-secret")
 
-# ---------------------------------------------------------------- DB helpers
+DB_SERVER = os.environ.get("DB_SERVER", "localhost")
+DB_NAME = os.environ.get("DB_NAME", "QUAN_LY_BONG_DA")
+
+
+# ---------------------------------------------------------------- DB helpers (SQL Server)
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DB_PATH)
-        g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA foreign_keys = ON")
+        conn_str = (
+            f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+            f"SERVER={DB_SERVER};"
+            f"DATABASE={DB_NAME};"
+            "Trusted_Connection=yes;"
+            "TrustServerCertificate=yes;"
+        )
+        g.db = pyodbc.connect(conn_str)
     return g.db
 
 
@@ -35,23 +43,36 @@ def close_db(_=None):
         db.close()
 
 
-def _row(r):
-    return dict(r) if r is not None else None
-
-
 def q(sql, args=()):
-    return [_row(r) for r in get_db().execute(sql, args).fetchall()]
+    cur = get_db().cursor()
+    cur.execute(sql, args)
+    if not cur.description:
+        cur.close()
+        return []
+    cols = [c[0] for c in cur.description]
+    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    cur.close()
+    return rows
 
 
 def q1(sql, args=()):
-    return _row(get_db().execute(sql, args).fetchone())
+    cur = get_db().cursor()
+    cur.execute(sql, args)
+    if not cur.description:
+        cur.close()
+        return None
+    cols = [c[0] for c in cur.description]
+    r = cur.fetchone()
+    cur.close()
+    return dict(zip(cols, r)) if r else None
 
 
 def run(sql, args=()):
     db = get_db()
-    cur = db.execute(sql, args)
+    cur = db.cursor()
+    cur.execute(sql, args)
     db.commit()
-    return cur.lastrowid
+    cur.close()
 
 
 # ---------------------------------------------------------------- Auth
@@ -116,12 +137,41 @@ def taikhoan():
                      generate_password_hash(request.form["matkhau"]), request.form["quyenhan"],
                      int(request.form["trangthai"])))
                 flash("Đã tạo tài khoản mới.", "success")
-            except sqlite3.IntegrityError:
+            except (pyodbc.IntegrityError, pyodbc.DatabaseError):
                 flash("Trùng tên đăng nhập hoặc mã nhân sự (mỗi nhân sự chỉ 1 tài khoản).", "danger")
+            except Exception as e:
+                flash(f"Lỗi: {e}", "danger")
         elif action == "xoaymk":
             run("UPDATE TAI_KHOAN SET MatKhau = ? WHERE MaTaiKhoan = ?",
                 (generate_password_hash(request.form["matkhau"] or "123456"), int(request.form["id"])))
             flash("Đã đổi mật khẩu tài khoản.", "success")
+        elif action == "sua":
+            rid = int(request.form["id"])
+            new_un = request.form.get("tendangnhap", "").strip()
+            new_q = request.form.get("quyenhan", "")
+            if not new_un:
+                flash("Tên đăng nhập không được để trống.", "danger")
+            elif new_q not in ("ADMIN", "CAPNHAT", "XEM"):
+                flash("Quyền không hợp lệ.", "danger")
+            else:
+                if rid == session["user"]["id"] and new_q != session.get("quyen"):
+                    new_q = session.get("quyen")
+                    flash("Không thể tự đổi quyền của chính mình (tên đăng nhập vẫn được cập nhật).", "warning")
+                try:
+                    run("UPDATE TAI_KHOAN SET TenDangNhap = ?, QuyenHan = ? WHERE MaTaiKhoan = ?",
+                        (new_un, new_q, rid))
+                    flash("Đã cập nhật tài khoản.", "success")
+                except (pyodbc.IntegrityError, pyodbc.DatabaseError):
+                    flash("Trùng tên đăng nhập với tài khoản khác.", "danger")
+                except Exception as e:
+                    flash(f"Lỗi: {e}", "danger")
+        elif action == "xoa":
+            rid = int(request.form["id"])
+            if rid == session["user"]["id"]:
+                flash("Không thể xóa chính tài khoản đang đăng nhập.", "danger")
+            else:
+                run("DELETE FROM TAI_KHOAN WHERE MaTaiKhoan = ?", (rid,))
+                flash("Đã xóa tài khoản.", "success")
         elif action == "toggle":
             run("UPDATE TAI_KHOAN SET TrangThaiHoatDong = 1 - TrangThaiHoatDong WHERE MaTaiKhoan = ?",
                 (int(request.form["id"]),))
@@ -136,31 +186,55 @@ def compute_score(tran_id):
     """Tự động tổng hợp tỷ số từ bàn thắng trong SU_KIEN_TRAN_DAU."""
     row = q1("""
       SELECT
-        SUM(CASE WHEN s.LoaiSuKien='BÀN THẮNG' AND c.MaCLB=t.MaDoiNha   THEN 1 ELSE 0 END) bt_nha,
-        SUM(CASE WHEN s.LoaiSuKien='BÀN THẮNG' AND c.MaCLB=t.MaDoiKhach THEN 1 ELSE 0 END) bt_khach
+        SUM(CASE WHEN s.LoaiSuKien=N'BÀN THẮNG' AND c.MaCLB=t.MaDoiNha   THEN 1 ELSE 0 END) bt_nha,
+        SUM(CASE WHEN s.LoaiSuKien=N'BÀN THẮNG' AND c.MaCLB=t.MaDoiKhach THEN 1 ELSE 0 END) bt_khach
       FROM TRAN_DAU t
       JOIN SU_KIEN_TRAN_DAU s ON s.MaTranDau = t.MaTranDau
       JOIN CAU_THU c ON c.MaCauThu = s.MaCauThuChinh
       WHERE t.MaTranDau = ?""", (tran_id,))
+    if not row:
+        return (0, 0)
     return (row["bt_nha"] or 0, row["bt_khach"] or 0)
+
+
+def scorer_query(ma_giai, where="", top=None):
+    top_clause = f"TOP {top}" if top else ""
+    sql = f"""
+      WITH agg AS (
+        SELECT c.MaCauThu, c.HoTen, cl.TenVietTom CLB, cl.Logo,
+               SUM(CASE WHEN s.LoaiSuKien=N'BÀN THẮNG' THEN 1 ELSE 0 END) BanThang,
+               SUM(CASE WHEN s.LoaiSuKien=N'THẺ VÀNG' THEN 1 ELSE 0 END) TheVang,
+               SUM(CASE WHEN s.LoaiSuKien=N'THẺ ĐỎ'   THEN 1 ELSE 0 END) TheDo
+        FROM SU_KIEN_TRAN_DAU s
+        JOIN TRAN_DAU t ON t.MaTranDau = s.MaTranDau
+        JOIN VONG_DAU v ON v.MaVongDau = t.MaVongDau
+        JOIN CAU_THU c ON c.MaCauThu = s.MaCauThuChinh
+        LEFT JOIN CLB cl ON cl.MaCLB = c.MaCLB
+        WHERE v.MaGiaiDau = ?
+        GROUP BY c.MaCauThu, c.HoTen, cl.TenVietTom, cl.Logo
+      )
+      SELECT {top_clause} * FROM agg {where} ORDER BY BanThang DESC, TheVang ASC
+    """
+    return q(sql, (ma_giai,))
 
 
 @app.route("/")
 @login_required()
 def index():
-    giai = q1("SELECT * FROM GIAI_DAU WHERE TrangThai='ĐANG DIỄN RA' ORDER BY NamBatDau DESC LIMIT 1") \
-         or q1("SELECT * FROM GIAI_DAU ORDER BY MaGiaiDau DESC LIMIT 1")
+    giai = q1("SELECT TOP 1 * FROM GIAI_DAU WHERE TrangThai=N'ĐANG DIỄN RA' ORDER BY NamBatDau DESC") \
+         or q1("SELECT TOP 1 * FROM GIAI_DAU ORDER BY MaGiaiDau DESC")
+    giai_id = giai["MaGiaiDau"] if giai else None
     stats = {
         "so_clb": q1("SELECT COUNT(*) c FROM CLB")["c"],
         "so_cauthu": q1("SELECT COUNT(*) c FROM CAU_THU")["c"],
         "so_tran": q1("SELECT COUNT(*) c FROM TRAN_DAU WHERE MaVongDau IN (SELECT MaVongDau FROM VONG_DAU WHERE MaGiaiDau=?)",
-                      (giai["MaGiaiDau"],))["c"],
+                      (giai_id,))["c"] if giai_id else 0,
         "so_ban": q1("""SELECT COUNT(*) c FROM SU_KIEN_TRAN_DAU s JOIN TRAN_DAU t ON t.MaTranDau=s.MaTranDau
                         JOIN VONG_DAU v ON v.MaVongDau=t.MaVongDau
-                        WHERE s.LoaiSuKien='BÀN THẮNG' AND v.MaGiaiDau=?""", (giai["MaGiaiDau"],))["c"],
+                        WHERE s.LoaiSuKien=N'BÀN THẮNG' AND v.MaGiaiDau=?""", (giai_id,))["c"] if giai_id else 0,
         "so_the": q1("""SELECT COUNT(*) c FROM SU_KIEN_TRAN_DAU s JOIN TRAN_DAU t ON t.MaTranDau=s.MaTranDau
                         JOIN VONG_DAU v ON v.MaVongDau=t.MaVongDau
-                        WHERE s.LoaiSuKien IN ('THẺ VÀNG','THẺ ĐỎ') AND v.MaGiaiDau=?""", (giai["MaGiaiDau"],))["c"],
+                        WHERE s.LoaiSuKien IN (N'THẺ VÀNG',N'THẺ ĐỎ') AND v.MaGiaiDau=?""", (giai_id,))["c"] if giai_id else 0,
     }
     tran_live = q("""SELECT t.*, vn.TenVong, sn.TenSan AS SanNha,
                             d1.TenVietTom doi_nha, d2.TenVietTom doi_khach
@@ -168,44 +242,19 @@ def index():
                      JOIN VONG_DAU vn ON vn.MaVongDau=t.MaVongDau
                      JOIN CLB d1 ON d1.MaCLB=t.MaDoiNha JOIN CLB d2 ON d2.MaCLB=t.MaDoiKhach
                      JOIN SAN_VAN_DONG sn ON sn.MaSanVD=t.MaSanVD
-                     WHERE vn.MaGiaiDau=? AND t.TrangThai IN ('ĐANG ĐÁ','CHƯA ĐÁ','HOÃN')
-                     ORDER BY t.NgayGioThiDau""", (giai["MaGiaiDau"],))
-    top_scorers = scorer_query(giai["MaGiaiDau"], limit="LIMIT 5")
+                     WHERE vn.MaGiaiDau=? AND t.TrangThai IN (N'ĐANG ĐÁ',N'CHƯA ĐÁ',N'HOÃN')
+                     ORDER BY t.NgayGioThiDau""", (giai_id,)) if giai_id else []
+    top_scorers = scorer_query(giai_id, top=5) if giai_id else []
     return render_template("index.html", giai=giai, stats=stats, tran_live=tran_live, top_scorers=top_scorers)
-
-
-SCORER_SQL = """
-  WITH agg AS (
-    SELECT c.MaCauThu, c.HoTen, cl.TenVietTom CLB, cl.Logo,
-           SUM(CASE WHEN s.LoaiSuKien='BÀN THẮNG' THEN 1 ELSE 0 END) BanThang,
-           SUM(CASE WHEN s.LoaiSuKien='THẺ VÀNG' THEN 1 ELSE 0 END) TheVang,
-           SUM(CASE WHEN s.LoaiSuKien='THẺ ĐỎ'   THEN 1 ELSE 0 END) TheDo
-    FROM SU_KIEN_TRAN_DAU s
-    JOIN TRAN_DAU t ON t.MaTranDau = s.MaTranDau
-    JOIN VONG_DAU v ON v.MaVongDau = t.MaVongDau
-    JOIN CAU_THU c ON c.MaCauThu = s.MaCauThuChinh
-    LEFT JOIN CLB cl ON cl.MaCLB = c.MaCLB
-    WHERE v.MaGiaiDau = ?
-    GROUP BY c.MaCauThu
-  )
-  SELECT * FROM agg ORDER BY BanThang DESC, TheVang ASC
-"""
-
-
-def scorer_query(ma_giai, where="", limit=""):
-    """where/limit chỉ ghép phần sau ORDER BY -> dùng tham số hóa cho MaGiaiDau."""
-    sql = SCORER_SQL.replace("ORDER BY BanThang DESC, TheVang ASC",
-                             f"{where} ORDER BY BanThang DESC, TheVang ASC {limit}")
-    return q(sql, (ma_giai,))
 
 
 # ---------------------------------------------------------------- Bảng xếp hạng
 def rebuild_bxh(ma_giai):
     """Tổng hợp kết quả các trận ĐÃ KẾT THÚC theo vòng đấu gần nhất -> BANG_XEP_HANG."""
-    vong = q1("""SELECT v.MaVongDau FROM VONG_DAU v
+    vong = q1("""SELECT TOP 1 v.MaVongDau FROM VONG_DAU v
                  WHERE v.MaGiaiDau=? AND EXISTS (SELECT 1 FROM TRAN_DAU t
-                         WHERE t.MaVongDau=v.MaVongDau AND t.TrangThai='ĐÃ KẾT THÚC')
-                 ORDER BY v.MaVongDau DESC LIMIT 1""", (ma_giai,))
+                         WHERE t.MaVongDau=v.MaVongDau AND t.TrangThai=N'ĐÃ KẾT THÚC')
+                 ORDER BY v.MaVongDau DESC""", (ma_giai,))
     if not vong:
         return 0
     mv = vong["MaVongDau"]
@@ -213,14 +262,14 @@ def rebuild_bxh(ma_giai):
       WITH bt AS (
         SELECT s.MaTranDau, c.MaCLB team, COUNT(*) goals
         FROM SU_KIEN_TRAN_DAU s JOIN CAU_THU c ON c.MaCauThu=s.MaCauThuChinh
-        WHERE s.LoaiSuKien='BÀN THẮNG' GROUP BY s.MaTranDau, c.MaCLB
+        WHERE s.LoaiSuKien=N'BÀN THẮNG' GROUP BY s.MaTranDau, c.MaCLB
       ),
       the AS (
         SELECT s.MaTranDau, c.MaCLB team,
-               SUM(CASE WHEN s.LoaiSuKien='THẺ VÀNG' THEN 1 ELSE 0 END)*1
-             + SUM(CASE WHEN s.LoaiSuKien='THẺ ĐỎ' THEN 3 ELSE 0 END)*0 fp
+               SUM(CASE WHEN s.LoaiSuKien=N'THẺ VÀNG' THEN 1 ELSE 0 END)*1
+             + SUM(CASE WHEN s.LoaiSuKien=N'THẺ ĐỎ' THEN 3 ELSE 0 END)*0 fp
         FROM SU_KIEN_TRAN_DAU s JOIN CAU_THU c ON c.MaCauThu=s.MaCauThuChinh
-        WHERE s.LoaiSuKien IN ('THẺ VÀNG','THẺ ĐỎ') GROUP BY s.MaTranDau, c.MaCLB
+        WHERE s.LoaiSuKien IN (N'THẺ VÀNG',N'THẺ ĐỎ') GROUP BY s.MaTranDau, c.MaCLB
       )
       SELECT x.MaCLB,
              COUNT(*) SoTranDaDau,
@@ -229,40 +278,38 @@ def rebuild_bxh(ma_giai):
              COALESCE(SUM(x.fp),0) DiemFairPlay
       FROM (
         SELECT t.MaTranDau, cl.MaCLB,
-          CASE WHEN cl.MaCLB=t.MaDoiNha AND (n.goals>k.goals) THEN 1
-               WHEN cl.MaCLB=t.MaDoiKhach AND (k.goals>n.goals) THEN 1 ELSE 0 END win,
-          CASE WHEN n.goals=k.goals THEN 1 ELSE 0 END draw,
-          CASE WHEN cl.MaCLB=t.MaDoiNha AND (n.goals<k.goals) THEN 1
-               WHEN cl.MaCLB=t.MaDoiKhach AND (k.goals<n.goals) THEN 1 ELSE 0 END loss,
+          CASE WHEN cl.MaCLB=t.MaDoiNha AND (COALESCE(n.goals,0)>COALESCE(k.goals,0)) THEN 1
+               WHEN cl.MaCLB=t.MaDoiKhach AND (COALESCE(k.goals,0)>COALESCE(n.goals,0)) THEN 1 ELSE 0 END win,
+          CASE WHEN COALESCE(n.goals,0)=COALESCE(k.goals,0) THEN 1 ELSE 0 END draw,
+          CASE WHEN cl.MaCLB=t.MaDoiNha AND (COALESCE(n.goals,0)<COALESCE(k.goals,0)) THEN 1
+               WHEN cl.MaCLB=t.MaDoiKhach AND (COALESCE(k.goals,0)<COALESCE(n.goals,0)) THEN 1 ELSE 0 END loss,
           CASE WHEN cl.MaCLB=t.MaDoiNha THEN COALESCE(n.goals,0) ELSE COALESCE(k.goals,0) END gf,
           CASE WHEN cl.MaCLB=t.MaDoiNha THEN COALESCE(k.goals,0) ELSE COALESCE(n.goals,0) END ga,
           COALESCE(th.fp,0) fp
         FROM TRAN_DAU t
         JOIN VONG_DAU v ON v.MaVongDau=t.MaVongDau AND v.MaGiaiDau=?
-        JOIN CLB cl
+        CROSS JOIN CLB cl
         LEFT JOIN bt n ON n.MaTranDau=t.MaTranDau AND n.team=t.MaDoiNha
         LEFT JOIN bt k ON k.MaTranDau=t.MaTranDau AND k.team=t.MaDoiKhach
         LEFT JOIN the th ON th.MaTranDau=t.MaTranDau AND th.team=cl.MaCLB
-        WHERE t.TrangThai='ĐÃ KẾT THÚC' AND t.MaVongDau<=?
+        WHERE t.TrangThai=N'ĐÃ KẾT THÚC' AND t.MaVongDau<=?
           AND (cl.MaCLB=t.MaDoiNha OR cl.MaCLB=t.MaDoiKhach)
       ) x GROUP BY x.MaCLB""", (ma_giai, mv))
-    db = get_db()
-    db.execute("DELETE FROM BANG_XEP_HANG WHERE MaVongDau=?", (mv,))
+    run("DELETE FROM BANG_XEP_HANG WHERE MaVongDau=?", (mv,))
     ranked = sorted(rows, key=lambda r: (-(r["SoTranThang"] * 3 + r["SoTranHoa"]),
                                          -(r["TongBanThang"] - r["TongBanThua"]),
                                          -r["TongBanThang"], r["DiemFairPlay"]))
     for i, r in enumerate(ranked, 1):
-        db.execute("""INSERT INTO BANG_XEP_HANG
-                      (MaVongDau,MaCLB,SoTranDaDau,SoTranThang,SoTranHoa,SoTranThua,
-                       TongBanThang,TongBanThua,DiemFairPlay,ThuHang)
-                      VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                   (mv, r["MaCLB"], r["SoTranDaDau"], r["SoTranThang"], r["SoTranHoa"],
-                    r["SoTranThua"], r["TongBanThang"], r["TongBanThua"], r["DiemFairPlay"], i))
-    db.commit()
+        run("""INSERT INTO BANG_XEP_HANG
+               (MaVongDau,MaCLB,SoTranDaDau,SoTranThang,SoTranHoa,SoTranThua,
+                TongBanThang,TongBanThua,DiemFairPlay,ThuHang)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (mv, r["MaCLB"], r["SoTranDaDau"], r["SoTranThang"], r["SoTranHoa"],
+             r["SoTranThua"], r["TongBanThang"], r["TongBanThua"], r["DiemFairPlay"], i))
     return len(ranked)
 
 
-@app.route("/bang-xep-hang")
+@app.route("/bang-xep-hang", methods=["GET", "POST"])
 @login_required()
 def bxh():
     ma_giai = int(request.args.get("giai", 1))
@@ -270,8 +317,8 @@ def bxh():
         n = rebuild_bxh(ma_giai)
         flash(f"Đã kết xuất lại bảng xếp hạng ({n} CLB).", "success")
         return redirect(url_for("bxh", giai=ma_giai))
-    vong = q1("""SELECT v.* FROM BANG_XEP_HANG b JOIN VONG_DAU v ON v.MaVongDau=b.MaVongDau
-                 WHERE v.MaGiaiDau=? ORDER BY b.MaVongDau DESC LIMIT 1""", (ma_giai,))
+    vong = q1("""SELECT TOP 1 v.* FROM BANG_XEP_HANG b JOIN VONG_DAU v ON v.MaVongDau=b.MaVongDau
+                 WHERE v.MaGiaiDau=? ORDER BY b.MaVongDau DESC""", (ma_giai,))
     ds = []
     if vong:
         ds = q("""SELECT b.*, c.TenCLB, c.TenVietTom, c.Logo, s.TenSan
@@ -325,7 +372,7 @@ def lich_them():
              int(request.form["MaDoiKhach"]), int(request.form["MaSanVD"]),
              request.form["NgayGioThiDau"], request.form["TrangThai"]))
         flash("Đã thêm trận đấu vào lịch thi đấu.", "success")
-    except (sqlite3.IntegrityError, ValueError) as e:
+    except (pyodbc.IntegrityError, pyodbc.DatabaseError, ValueError) as e:
         flash(f"Không hợp lệ: {e}", "danger")
     return redirect(url_for("lich", giai=request.form.get("giai", 1)))
 
@@ -355,7 +402,6 @@ def tran(mid):
     trong_tais = q("""SELECT p.*, w.HoTen, w.CapDo FROM PHAN_CONG_TRONG_TAI p
                       JOIN TRONG_TAI w ON w.MaTrongTai=p.MaTrongTai WHERE p.MaTranDau=?
                       ORDER BY p.NhiemVu""", (mid,))
-    # cầu thủ của 2 đội cho form thêm sự kiện/đội hình (kèm CLB để hiển thị)
     all_cs = q("""SELECT c.*, cl.TenVietTom club FROM CAU_THU c
                   LEFT JOIN CLB cl ON cl.MaCLB=c.MaCLB ORDER BY c.HoTen""")
     all_trong_tai = q("SELECT MaTrongTai, HoTen, CapDo FROM TRONG_TAI ORDER BY HoTen")
@@ -389,7 +435,7 @@ def tran_sukien(mid):
             (mid, request.form["LoaiSuKien"], int(request.form["Phut"]),
              int(request.form["MaCauThuChinh"]), int(phu) if phu else None))
         flash("Đã ghi nhận sự kiện. Tỷ số được tự động tổng hợp lại.", "success")
-    except (sqlite3.IntegrityError, ValueError) as e:
+    except (pyodbc.IntegrityError, pyodbc.DatabaseError, ValueError) as e:
         flash(f"Lỗi: {e}", "danger")
     return redirect(url_for("tran", mid=mid))
 
@@ -411,7 +457,7 @@ def tran_doihinh(mid):
             (mid, int(request.form["MaCauThu"]), request.form["LoaiRaSan"],
              int(request.form.get("DaiDoTruong") or 0)))
         flash("Đã bổ sung đội hình ra sân.", "success")
-    except sqlite3.IntegrityError:
+    except (pyodbc.IntegrityError, pyodbc.DatabaseError):
         flash("Cầu thủ đã có trong đội hình trận này.", "danger")
     return redirect(url_for("tran", mid=mid))
 
@@ -423,7 +469,7 @@ def phan_cong():
         run("INSERT INTO PHAN_CONG_TRONG_TAI (MaTranDau,MaTrongTai,NhiemVu) VALUES (?,?,?)",
             (int(request.form["MaTranDau"]), int(request.form["MaTrongTai"]), request.form["NhiemVu"]))
         flash("Đã phân công trọng tài.", "success")
-    except sqlite3.IntegrityError:
+    except (pyodbc.IntegrityError, pyodbc.DatabaseError):
         flash("Trọng tài này đã được phân công cho trận đó.", "danger")
     return redirect(request.referrer or url_for("index"))
 
@@ -434,22 +480,25 @@ def phan_cong():
 def thong_ke():
     ma_giai = int(request.args.get("giai", 1))
     gias = q("SELECT * FROM GIAI_DAU ORDER BY NamBatDau DESC")
-    vua_pha_luoi = scorer_query(ma_giai, where="WHERE BanThang > 0", limit="")
+    vua_pha_luoi = scorer_query(ma_giai, where="WHERE BanThang > 0")
     doi_nhieu_ban = q("""SELECT cl.TenCLB, cl.TenVietTom, cl.Logo, COUNT(*) BanThang
                          FROM SU_KIEN_TRAN_DAU s
                          JOIN TRAN_DAU t ON t.MaTranDau=s.MaTranDau
                          JOIN VONG_DAU v ON v.MaVongDau=t.MaVongDau
                          JOIN CAU_THU c ON c.MaCauThu=s.MaCauThuChinh
                          JOIN CLB cl ON cl.MaCLB=c.MaCLB
-                         WHERE s.LoaiSuKien='BÀN THẮNG' AND v.MaGiaiDau=?
-                         GROUP BY cl.MaCLB ORDER BY BanThang DESC""", (ma_giai,))
+                         WHERE s.LoaiSuKien=N'BÀN THẮNG' AND v.MaGiaiDau=?
+                         GROUP BY cl.MaCLB, cl.TenCLB, cl.TenVietTom, cl.Logo
+                         ORDER BY BanThang DESC""", (ma_giai,))
     the_phat = q("""SELECT cl.TenCLB, cl.TenVietTom,
-                           SUM(s.LoaiSuKien='THẺ VÀNG') TheVang, SUM(s.LoaiSuKien='THẺ ĐỎ') TheDo
+                           SUM(CASE WHEN s.LoaiSuKien=N'THẺ VÀNG' THEN 1 ELSE 0 END) TheVang,
+                           SUM(CASE WHEN s.LoaiSuKien=N'THẺ ĐỎ' THEN 1 ELSE 0 END) TheDo
                     FROM SU_KIEN_TRAN_DAU s JOIN TRAN_DAU t ON t.MaTranDau=s.MaTranDau
                     JOIN VONG_DAU v ON v.MaVongDau=t.MaVongDau
                     JOIN CAU_THU c ON c.MaCauThu=s.MaCauThuChinh JOIN CLB cl ON cl.MaCLB=c.MaCLB
-                    WHERE s.LoaiSuKien IN ('THẺ VÀNG','THẺ ĐỎ') AND v.MaGiaiDau=?
-                    GROUP BY cl.MaCLB ORDER BY TheDo DESC, TheVang DESC""", (ma_giai,))
+                    WHERE s.LoaiSuKien IN (N'THẺ VÀNG',N'THẺ ĐỎ') AND v.MaGiaiDau=?
+                    GROUP BY cl.MaCLB, cl.TenCLB, cl.TenVietTom
+                    ORDER BY TheDo DESC, TheVang DESC""", (ma_giai,))
     return render_template("thongke.html", gias=gias, ma_giai=ma_giai,
                            vua=vua_pha_luoi, nhieu_ban=doi_nhieu_ban, the=the_phat)
 
@@ -531,7 +580,7 @@ def fk_display(table, col, val):
         return val
     t, pk, namecol = ref
     if namecol == "NULL":
-        r = q1(f"SELECT CAST({pk} AS TEXT) v FROM {t} WHERE {pk}=?", (val,))
+        r = q1(f"SELECT CAST({pk} AS VARCHAR(50)) v FROM {t} WHERE {pk}=?", (val,))
     else:
         r = q1(f"SELECT {namecol} v FROM {t} WHERE {pk}=?", (val,))
     return r["v"] if r else val
@@ -546,7 +595,6 @@ def ql_list(slug):
     rows = q(f"SELECT * FROM {table} ORDER BY {pk}")
     edit_id = request.args.get("edit", type=int)
     editing = q1(f"SELECT * FROM {table} WHERE {pk}=?", (edit_id,)) if edit_id else None
-    # danh sách lựa chọn cho các cột FK
     fkopts = {}
     for c in cols:
         ref = FK_REF.get(c)
@@ -587,8 +635,10 @@ def ql_save(slug):
         else:
             run(f"INSERT INTO {table} ({','.join(cols)}) VALUES ({','.join('?'*len(cols))})", vals)
             flash("Đã thêm bản ghi mới.", "success")
-    except sqlite3.IntegrityError as e:
+    except (pyodbc.IntegrityError, pyodbc.DatabaseError) as e:
         flash(f"Lỗi ràng buộc dữ liệu (FK/UNIQUE): {e}", "danger")
+    except Exception as e:
+        flash(f"Lỗi: {e}", "danger")
     return redirect(url_for("ql_list", slug=slug) + (f"?edit={f.get('id')}" if f.get("id") else ""))
 
 
@@ -601,7 +651,7 @@ def ql_delete(slug, rid):
     try:
         run(f"DELETE FROM {table} WHERE {pk}=?", (rid,))
         flash("Đã xóa bản ghi.", "success")
-    except sqlite3.IntegrityError:
+    except (pyodbc.IntegrityError, pyodbc.DatabaseError):
         flash("Không thể xóa: bản ghi đang được tham chiếu bởi dữ liệu khác.", "danger")
     return redirect(url_for("ql_list", slug=slug))
 
@@ -617,7 +667,5 @@ def err404(e):
 
 
 if __name__ == "__main__":
-    if not os.path.exists(DB_PATH):
-        from seed import seed
-        seed()
+    print(f"Connecting to SQL Server: {DB_SERVER}, Database: {DB_NAME}")
     app.run(debug=True, host="0.0.0.0", port=5000)

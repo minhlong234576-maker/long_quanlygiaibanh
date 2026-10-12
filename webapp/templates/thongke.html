@@ -1,17 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Thống kê{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h4 class="mb-0">📊 Thống kê giải đấu</h4>
-  <form method="get"><select class="form-select form-select-sm" name="giai" onchange="this.form.submit()">
+<section class="page-header">
+  <div>
+    <h1 class="page-title">📊 Thống kê giải đấu</h1>
+    <p class="page-subtitle">Tổng hợp hiệu suất ghi bàn, kỷ luật và phong độ nổi bật của các đội bóng và cầu thủ.</p>
+  </div>
+  <form class="page-toolbar" method="get"><select class="form-select form-select-sm" name="giai" onchange="this.form.submit()">
     {% for g in gias %}<option value="{{ g.MaGiaiDau }}" {{ 'selected' if g.MaGiaiDau==ma_giai }}>{{ g.TenGiai }}</option>{% endfor %}
   </select></form>
-</div>
+</section>
 <div class="row g-4">
   <div class="col-lg-5">
-    <div class="card p-3">
-      <h5>🥇 Vua phá lưới</h5>
-      <table class="table table-sm mb-0">
+    <div class="card app-card p-3">
+      <h5 class="panel-title">🥇 Vua phá lưới</h5>
+      <div class="table-responsive">
+      <table class="table table-sm">
         <thead><tr><th>Hạng</th><th>Cầu thủ</th><th>CLB</th><th class="text-center">⚽</th><th class="text-center">🟨</th><th class="text-center">🟥</th></tr></thead>
         <tbody>
         {% for c in vua %}
@@ -23,12 +27,14 @@
         {% else %}<tr><td colspan="6" class="text-muted">Chưa có bàn thắng.</td></tr>{% endfor %}
         </tbody>
       </table>
+      </div>
     </div>
   </div>
   <div class="col-lg-4">
-    <div class="card p-3">
-      <h5>🏟️ Đội ghi nhiều bàn nhất</h5>
-      <table class="table table-sm mb-0">
+    <div class="card app-card p-3">
+      <h5 class="panel-title">🏟️ Đội ghi nhiều bàn nhất</h5>
+      <div class="table-responsive">
+      <table class="table table-sm">
         <tbody>
         {% for d in nhieu_ban %}
           <tr><td>{{ d.Logo }} {{ d.TenVietTom }}</td>
@@ -36,12 +42,14 @@
         {% else %}<tr><td class="text-muted">Chưa có dữ liệu.</td></tr>{% endfor %}
         </tbody>
       </table>
+      </div>
     </div>
   </div>
   <div class="col-lg-3">
-    <div class="card p-3">
-      <h5>🟨 Thẻ phạt theo CLB</h5>
-      <table class="table table-sm mb-0">
+    <div class="card app-card p-3">
+      <h5 class="panel-title">🟨 Thẻ phạt theo CLB</h5>
+      <div class="table-responsive">
+      <table class="table table-sm">
         <thead><tr><th>CLB</th><th class="text-center">🟨</th><th class="text-center">🟥</th></tr></thead>
         <tbody>
         {% for d in the %}
@@ -51,6 +59,7 @@
         {% else %}<tr><td colspan="3" class="text-muted">Chưa có thẻ.</td></tr>{% endfor %}
         </tbody>
       </table>
+      </div>
     </div>
   </div>
 </div>

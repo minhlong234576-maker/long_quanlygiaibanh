@@ -13,12 +13,30 @@
       <td><code>{{ t.TenDangNhap }}</code></td>
       <td><span class="badge text-bg-{{ 'danger' if t.QuyenHan=='ADMIN' else ('info' if t.QuyenHan=='CAPNHAT' else 'secondary') }}">{{ t.QuyenHan }}</span></td>
       <td>{% if t.TrangThaiHoatDong %}<span class="text-success">● Hoạt động</span>{% else %}<span class="text-danger">● Khóa</span>{% endif %}</td>
-      <td class="text-end">
+      <td class="text-end text-nowrap">
+        <button class="btn btn-sm btn-outline-primary py-0" data-bs-toggle="collapse" data-bs-target="#edit{{ t.MaTaiKhoan }}" aria-expanded="false" aria-controls="edit{{ t.MaTaiKhoan }}">Sửa</button>
+        <form class="d-inline" method="post" onsubmit="return confirm('Xóa tài khoản {{ t.TenDangNhap }}?')">
+          <input type="hidden" name="action" value="xoa"><input type="hidden" name="id" value="{{ t.MaTaiKhoan }}">
+          <button class="btn btn-sm btn-outline-danger py-0">Xóa</button></form>
         <form class="d-inline" method="post"><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="{{ t.MaTaiKhoan }}">
           <button class="btn btn-sm btn-outline-warning py-0">{{ 'Khóa' if t.TrangThaiHoatDong else 'Mở khóa' }}</button></form>
         <form class="d-inline" method="post"><input type="hidden" name="action" value="xoaymk"><input type="hidden" name="id" value="{{ t.MaTaiKhoan }}">
           <input class="form-control form-control-sm d-inline-block" style="width:110px" name="matkhau" placeholder="MK mới">
           <button class="btn btn-sm btn-outline-primary py-0">Đổi MK</button></form>
+      </td>
+    </tr>
+    <tr class="collapse" id="edit{{ t.MaTaiKhoan }}">
+      <td colspan="6" class="bg-light">
+        <form method="post" class="row g-2 align-items-end mb-0">
+          <input type="hidden" name="action" value="sua"><input type="hidden" name="id" value="{{ t.MaTaiKhoan }}">
+          <div class="col-md-4"><label class="small">Tên đăng nhập mới</label>
+            <input class="form-control form-control-sm" name="tendangnhap" value="{{ t.TenDangNhap }}" required></div>
+          <div class="col-md-4"><label class="small">Quyền sử dụng</label>
+            <select class="form-select form-select-sm" name="quyenhan">
+              {% for q in ['ADMIN','CAPNHAT','XEM'] %}<option value="{{ q }}" {{ 'selected' if q==t.QuyenHan }}>{{ q }}</option>{% endfor %}
+            </select></div>
+          <div class="col-md-4"><button class="btn btn-sm btn-success">Lưu thay đổi</button></div>
+        </form>
       </td>
     </tr>
   {% endfor %}
