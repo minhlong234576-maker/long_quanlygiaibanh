@@ -1,0 +1,13 @@
+.bg-success-dark { background: linear-gradient(90deg,#0b6e3a,#0f8a4b); }
+.card { border: 0; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.stat-card .display-6 { font-weight: 700; color: #0b6e3a; }
+table .rank-1 { background:#fff8dc; } .rank-2 { background:#f0f6ff; } .rank-3 { background:#f0fff4; }
+.rank-badge { width:2rem;height:2rem;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;background:#dee2e6; }
+.rank-1 .rank-badge{background:#ffc107;} .rank-2 .rank-badge{background:#adb5bd;color:#fff;} .rank-3 .rank-badge{background:#cd7f32;color:#fff;}
+.live-dot{width:.6rem;height:.6rem;border-radius:50%;background:#dc3545;display:inline-block;animation:blink 1s infinite;}
+@keyframes blink{50%{opacity:.2}}
+.evt-BAN span, .evt-g{color:#0b6e3a;font-weight:600}
+.table-hover tbody tr:hover{background:#eef7f0}
+.badge-st-CHUA\ ĐÁ{background:#6c757d}.badge-st-ĐANG\ ĐÁ{background:#dc3545}.badge-st-ĐÃ\ KẾT\ THÚC{background:#198754}.badge-st-HOÃN{background:#fd7e14}
+.st{font-size:.75rem;padding:.25em .6em;border-radius:1rem;color:#fff}
+.st-CHUA{background:#6c757d}.st-DANG{background:#dc3545}.st-KET{background:#198754}.st-HOAN{background:#fd7e14}

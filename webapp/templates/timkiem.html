@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Tìm kiếm{% endblock %}
+{% block content %}
+<h4 class="mb-3">🔎 Kết quả tìm kiếm: “{{ kw }}”</h4>
+<form class="mb-4" action=""><input class="form-control" name="q" value="{{ kw }}" placeholder="Nhập từ khóa..."></form>
+{% macro section(title, rows, cols, link_fmt=None) %}
+<div class="card p-3 mb-3">
+  <h6 class="text-success">{{ title }} <span class="badge text-bg-secondary">{{ rows|length }}</span></h6>
+  {% if rows %}
+  <table class="table table-sm mb-0"><thead><tr>{% for c in cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for r in rows %}<tr>{% for c in cols %}<td>{{ r[c] if r[c] is not none else '—' }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p class="text-muted small mb-0">Không tìm thấy.</p>{% endif %}
+</div>
+{% endmacro %}
+{{ section("Câu lạc bộ", res.clb, ["MaCLB","TenCLB","TenVietTom","Logo","MaSanNha"]) }}
+{{ section("Cầu thủ", res.ct, ["MaCauThu","HoTen","NgaySinh","QuocTich","LoaiCauThu","ViTriSoTruong","club"]) }}
+{{ section("Ban huấn luyện", res.hlv, ["MaHLV","HoTen","ChucVu","BangCap","club"]) }}
+{{ section("Sân vận động", res.san, ["MaSanVD","TenSan","SucChua","DiaChi"]) }}
+{{ section("Giải đấu", res.gd, ["MaGiaiDau","TenGiai","NamBatDau","TrangThai"]) }}
+{{ section("Vòng đấu", res.vong, ["MaVongDau","TenVong","GiaiDoan","TenGiai"]) }}
+<div class="card p-3 mb-3">
+  <h6 class="text-success">Trận đấu <span class="badge text-bg-secondary">{{ res.tran|length }}</span></h6>
+  {% if res.tran %}
+  <table class="table table-sm mb-0"><thead><tr><th>Mã trận</th><th>Cặp đấu</th><th>Ngày giờ</th><th>Trạng thái</th><th></th></tr></thead>
+    <tbody>{% for t in res.tran %}<tr><td>#{{ t.MaTranDau }}</td><td>{{ t.nha }} vs {{ t.khach }}</td>
+      <td>{{ t.NgayGioThiDau }}</td><td>{{ t.TrangThai }}</td>
+      <td><a class="btn btn-sm btn-outline-success py-0" href="{{ url_for('tran', mid=t.MaTranDau) }}">Chi tiết</a></td></tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p class="text-muted small mb-0">Không tìm thấy.</p>{% endif %}
+</div>
+{% endblock %}

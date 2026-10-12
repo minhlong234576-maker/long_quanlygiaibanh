@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Lịch thi đấu{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0">📅 Lịch thi đấu &amp; kết quả</h4>
+  <form class="d-flex gap-2" method="get">
+    <select class="form-select form-select-sm" name="giai" onchange="this.form.submit()">
+      {% for g in gias %}<option value="{{ g.MaGiaiDau }}" {{ 'selected' if g.MaGiaiDau==ma_giai }}>{{ g.TenGiai }}</option>{% endfor %}
+    </select>
+    <select class="form-select form-select-sm" name="vong" onchange="this.form.submit()">
+      <option value="">Tất cả vòng</option>
+      {% for v in vongs %}<option value="{{ v.MaVongDau }}" {{ 'selected' if vong_sel == v.MaVongDau|string }}>{{ v.TenVong }} ({{ v.GiaiDoan }})</option>{% endfor %}
+    </select>
+  </form>
+</div>
+
+<div class="card p-2 mb-4">
+<table class="table table-hover align-middle mb-0">
+  <thead><tr><th>Mã trận</th><th>Vòng</th><th class="text-end">Đội nhà</th><th style="width:110px">Tỷ số</th>
+    <th>Đội khách</th><th>Sân</th><th>Thời gian</th><th>Trạng thái</th></tr></thead>
+  <tbody>
+  {% for t in ds %}
+    <tr>
+      <td class="small text-muted">#{{ t.MaTranDau }}</td>
+      <td class="small">{{ t.TenVong }}<span class="d-block text-muted">{{ t.GiaiDoan }}</span></td>
+      <td class="text-end fw-semibold">{{ t.logo_nha }} {{ t.tt_nha }}</td>
+      <td class="text-center">
+        <a class="btn btn-sm btn-outline-dark fw-bold" href="{{ url_for('tran', mid=t.MaTranDau) }}">
+          {% if t.TrangThai in ('ĐÃ KẾT THÚC','ĐANG ĐÁ') %}{{ t.bt_nha }} : {{ t.bt_khach }}{% else %}vs{% endif %}
+        </a></td>
+      <td>{{ t.tt_khach }} {{ t.logo_khach }}</td>
+      <td class="small">{{ t.TenSan }}</td>
+      <td class="small">{{ t.NgayGioThiDau }}</td>
+      <td>{% if t.TrangThai=='ĐÃ KẾT THÚC' %}<span class="st st-KET">ĐÃ KẾT THÚC</span>
+          {% elif t.TrangThai=='ĐANG ĐÁ' %}<span class="st st-DANG"><span class="live-dot"></span> TRỰC TIẾP</span>
+          {% elif t.TrangThai=='HOÃN' %}<span class="st st-HOAN">HOÃN</span>
+          {% else %}<span class="st st-CHUA">CHƯA ĐÁ</span>{% endif %}</td>
+    </tr>
+  {% else %}<tr><td colspan="8" class="text-center text-muted py-4">Chưa có trận đấu.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if can_edit %}
+<div class="card p-3">
+  <h5>➕ Lập lịch trận đấu mới</h5>
+  <form method="post" action="{{ url_for('lich_them') }}" class="row g-2 align-items-end">
+    <input type="hidden" name="giai" value="{{ ma_giai }}">
+    <div class="col-md-2"><label class="small">Vòng đấu</label>
+      <select class="form-select form-select-sm" name="MaVongDau" required>
+        {% for v in vongs %}<option value="{{ v.MaVongDau }}">{{ v.TenVong }} ({{ v.GiaiDoan }})</option>{% endfor %}</select></div>
+    <div class="col-md-2"><label class="small">Đội nhà</label>
+      <select class="form-select form-select-sm" name="MaDoiNha" required>
+        {% for c in clbs %}<option value="{{ c.MaCLB }}">{{ c.TenVietTom }}</option>{% endfor %}</select></div>
+    <div class="col-md-2"><label class="small">Đội khách</label>
+      <select class="form-select form-select-sm" name="MaDoiKhach" required>
+        {% for c in clbs %}<option value="{{ c.MaCLB }}">{{ c.TenVietTom }}</option>{% endfor %}</select></div>
+    <div class="col-md-2"><label class="small">Sân thi đấu</label>
+      <select class="form-select form-select-sm" name="MaSanVD" required>
+        {% for s in sans %}<option value="{{ s.MaSanVD }}">{{ s.TenSan }}</option>{% endfor %}</select></div>
+    <div class="col-md-2"><label class="small">Ngày giờ</label>
+      <input class="form-control form-control-sm" type="datetime-local" name="NgayGioThiDau" value="2025-10-01T19:00"></div>
+    <div class="col-md-1"><label class="small">TT</label>
+      <select class="form-select form-select-sm" name="TrangThai">
+        <option>CHƯA ĐÁ</option><option>HOÃN</option></select></div>
+    <div class="col-md-1"><button class="btn btn-sm btn-success w-100">Thêm</button></div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

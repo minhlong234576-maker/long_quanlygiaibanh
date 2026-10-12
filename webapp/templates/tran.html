@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Trận #{{ t.MaTranDau }}{% endblock %}
+{% macro icon(ls) %}{{ '⚽' if ls=='BÀN THẮNG' else ('🟨' if ls=='THẺ VÀNG' else ('🟥' if ls=='THẺ ĐỎ' else '🔁')) }}{% endmacro %}
+{% block content %}
+<a class="btn btn-sm btn-outline-secondary mb-3" href="{{ url_for('lich', giai=t.MaGiaiDau) }}">← Lịch thi đấu</a>
+
+<div class="card p-4 mb-4 text-center">
+  <div class="small text-muted">{{ t.TenVong }} · {{ t.GiaiDoan }} · Sân {{ t.TenSan }} ({{ t.DiaChi }}) · {{ t.NgayGioThiDau }}</div>
+  <div class="d-flex justify-content-center align-items-center gap-4 my-3">
+    <div class="text-end"><div style="font-size:2.5rem">{{ t.logo_nha }}</div><h4 class="mb-0">{{ t.tt_nha }}</h4>
+      <div class="text-muted small">{{ t.doi_nha }}</div></div>
+    <div>
+      <span class="display-3 fw-bold">{% if t.TrangThai in ('ĐÃ KẾT THÚC','ĐANG ĐÁ') %}{{ t.bt_nha }} : {{ t.bt_khach }}{% else %}{{ t.tt_nha }} vs {{ t.tt_khach }}{% endif %}</span>
+      <div>{% if t.TrangThai=='ĐÃ KẾT THÚC' %}<span class="st st-KET">ĐÃ KẾT THÚC</span>
+        {% elif t.TrangThai=='ĐANG ĐÁ' %}<span class="st st-DANG"><span class="live-dot"></span> TRỰC TIẾP</span>
+        {% elif t.TrangThai=='HOÃN' %}<span class="st st-HOAN">HOÃN</span>
+        {% else %}<span class="st st-CHUA">CHƯA ĐÁ</span>{% endif %}</div>
+      <div class="text-muted small mt-1">Tỷ số tự tổng hợp từ ⚽ bàn thắng</div>
+    </div>
+    <div><div style="font-size:2.5rem">{{ t.logo_khach }}</div><h4 class="mb-0">{{ t.tt_khach }}</h4>
+      <div class="text-muted small">{{ t.doi_khach }}</div></div>
+  </div>
+  {% if can_edit %}
+  <form method="post" action="{{ url_for('tran_trangthai', mid=t.MaTranDau) }}" class="d-inline-flex gap-2 justify-content-center">
+    <select class="form-select form-select-sm" name="TrangThai" style="width:auto">
+      {% for tt in ['CHƯA ĐÁ','ĐANG ĐÁ','ĐÃ KẾT THÚC','HOÃN'] %}
+        <option {{ 'selected' if tt==t.TrangThai }}>{{ tt }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-sm btn-success">Cập nhật trạng thái</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card p-3">
+      <h5>📋 Diễn biến trận đấu</h5>
+      <ul class="list-group list-group-flush">
+        {% for s in su_kiens %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <span>{{ icon(s.LoaiSuKien) }} <strong>{{ s.Phut }}'</strong>
+            {{ s.ten_chinh }} <span class="text-muted small">({{ s.club }})</span>
+            {% if s.LoaiSuKien=='BÀN THẮNG' and s.ten_phu %}<span class="text-muted">kiến tạo: {{ s.ten_phu }}</span>{% endif %}
+            {% if s.LoaiSuKien=='THAY NGƯỜI' and s.ten_phu %}<span class="text-muted">↔ {{ s.ten_phu }}</span>{% endif %}
+          </span>
+          {% if can_edit %}
+          <form method="post" action="{{ url_for('sukien_delete', sid=s.MaSuKien) }}">
+            <button class="btn btn-sm btn-outline-danger py-0" title="Xóa">✕</button></form>
+          {% endif %}
+        </li>
+        {% else %}<li class="list-group-item text-muted">Chưa ghi nhận sự kiện nào.</li>{% endfor %}
+      </ul>
+      {% if can_edit %}
+      <hr><h6>➕ Ghi nhận sự kiện</h6>
+      <form method="post" action="{{ url_for('tran_sukien', mid=t.MaTranDau) }}" class="row g-2">
+        <div class="col-4"><select class="form-select form-select-sm" name="LoaiSuKien" required>
+          <option>BÀN THẮNG</option><option>THẺ VÀNG</option><option>THẺ ĐỎ</option><option>THAY NGƯỜI</option></select></div>
+        <div class="col-2"><input class="form-control form-control-sm" type="number" min="1" max="120" name="Phut" placeholder="Phút" required></div>
+        <div class="col-6"><select class="form-select form-select-sm" name="MaCauThuChinh" required>
+          {% for c in cs %}<option value="{{ c.MaCauThu }}">{{ c.HoTen }} ({{ c.club or 'Tự do' }})</option>{% endfor %}</select></div>
+        <div class="col-6"><select class="form-select form-select-sm" name="MaCauThuPhu">
+          <option value="">— Không có (kiến tạo / người bị thay) —</option>
+          {% for c in cs %}<option value="{{ c.MaCauThu }}">{{ c.HoTen }} ({{ c.club or 'Tự do' }})</option>{% endfor %}</select></div>
+        <div class="col-6"><button class="btn btn-sm btn-success w-100">Lưu sự kiện</button></div>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card p-3 mb-4">
+      <h5>👥 Đội hình ra sân</h5>
+      <table class="table table-sm mb-2">
+        <thead><tr><th>CLB</th><th>Cầu thủ</th><th>Vị trí</th><th>Loại</th><th>Đội trưởng</th></tr></thead>
+        <tbody>
+        {% for d in doi_hinhs %}
+          <tr><td>{{ d.club }}</td><td>{{ d.HoTen }} {% if d.DaiDoTruong %}©{% endif %}</td>
+              <td class="small text-muted">{{ d.ViTriSoTruong }}</td>
+              <td><span class="badge text-bg-{{ 'primary' if d.LoaiRaSan=='Đá chính' else 'secondary' }}">{{ d.LoaiRaSan }}</span></td>
+              <td>{{ '✅' if d.DaiDoTruong else '' }}</td></tr>
+        {% else %}<tr><td colspan="5" class="text-muted">Chưa nộp danh sách thi đấu.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+      {% if can_edit %}
+      <form method="post" action="{{ url_for('tran_doihinh', mid=t.MaTranDau) }}" class="row g-2">
+        <div class="col-5"><select class="form-select form-select-sm" name="MaCauThu" required>
+          {% for c in cs %}<option value="{{ c.MaCauThu }}">{{ c.HoTen }} ({{ c.club or 'Tự do' }})</option>{% endfor %}</select></div>
+        <div class="col-3"><select class="form-select form-select-sm" name="LoaiRaSan">
+          <option>Đá chính</option><option>Dự bị</option></select></div>
+        <div class="col-2"><div class="form-check"><input class="form-check-input" type="checkbox" name="DaiDoTruong" value="1" id="dd">
+          <label class="form-check-label small" for="dd">ĐT</label></div></div>
+        <div class="col-2"><button class="btn btn-sm btn-outline-success w-100">Thêm</button></div>
+      </form>
+      {% endif %}
+    </div>
+
+    <div class="card p-3">
+      <h5>🧑‍⚖️ Phân công trọng tài</h5>
+      <table class="table table-sm mb-2">
+        <tbody>
+        {% for w in trong_tais %}
+          <tr><td>{{ w.HoTen }}</td><td class="small text-muted">{{ w.CapDo }}</td>
+              <td><span class="badge text-bg-dark">{{ w.NhiemVu }}</span></td></tr>
+        {% else %}<tr><td class="text-muted">Chưa phân công.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+      {% if can_edit %}
+      <form method="post" action="{{ url_for('phan_cong') }}" class="row g-2">
+        <input type="hidden" name="MaTranDau" value="{{ t.MaTranDau }}">
+        <div class="col-5"><select class="form-select form-select-sm" name="MaTrongTai" required>
+          {% for w in trong_tai_ds %}<option value="{{ w.MaTrongTai }}">{{ w.HoTen }} ({{ w.CapDo }})</option>{% endfor %}
+        </select></div>
+        <div class="col-4"><select class="form-select form-select-sm" name="NhiemVu">
+          <option>TRỌNG TÀI CHÍNH</option><option>BIÊN</option><option>BÀN</option><option>VAR</option></select></div>
+        <div class="col-3"><button class="btn btn-sm btn-outline-success w-100">Phân công</button></div>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">🗂️ {{ title }} <span class="badge text-bg-secondary">{{ rows|length }}</span></h4>
+  {% if is_admin %}<button class="btn btn-sm btn-success" data-bs-toggle="collapse" data-bs-target="#formBox">➕ Thêm mới / Chỉnh sửa</button>{% endif %}
+</div>
+
+{% if is_admin %}
+<div class="collapse {{ 'show' if editing }} card p-3 mb-4" id="formBox">
+  <h5>{{ '✏️ Chỉnh sửa #' ~ editing[pk] if editing else '➕ Thêm bản ghi vào ' ~ table }}</h5>
+  <form method="post" class="row g-2">
+    {% if editing %}<input type="hidden" name="id" value="{{ editing[pk] }}">{% endif %}
+    {% for c in cols %}
+      {% set val = editing[c] if editing else '' %}
+      <div class="col-md-3">
+        <label class="small form-label">{{ labels.get(c, c) }} {% if c in ('MaSanNha','MaCLB','MaCauThu','MaGiaiDau','MaVongDau') %}<span class="text-muted">(mã FK)</span>{% endif %}</label>
+        {% if options.get(c) %}
+          <select class="form-select form-select-sm" name="{{ c }}">
+            <option value="">—</option>
+            {% for o in options[c] %}<option value="{{ o }}" {{ 'selected' if val == o }}>{{ o }}</option>{% endfor %}
+          </select>
+        {% elif fkopts.get(c) %}
+          <select class="form-select form-select-sm" name="{{ c }}">
+            <option value="">— chọn —</option>
+            {% for oid, otext in fkopts[c] %}
+              <option value="{{ oid }}" {{ 'selected' if val is not none and val|string == oid|string }}>{{ otext }}</option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <input class="form-control form-control-sm" name="{{ c }}" value="{{ val if val is not none else '' }}">
+        {% endif %}
+      </div>
+    {% endfor %}
+    <div class="col-12"><button class="btn btn-sm btn-success">{{ 'Cập nhật' if editing else 'Thêm' }}</button></div>
+  </form>
+</div>
+{% endif %}
+
+<div class="card p-2">
+<table class="table table-hover align-middle mb-0">
+  <thead><tr><th>{{ pk }}</th>{% for c in cols %}<th>{{ labels.get(c,c) }}</th>{% endfor %}
+    {% if is_admin %}<th></th>{% endif %}</tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="text-muted">#{{ r[pk] }}</td>
+      {% for c in cols %}
+        <td>{% if c.startswith('Ma') and c != pk %}{{ fkdisp(table, c, r[c])|safe }}{% else %}{{ r[c] if r[c] is not none else '—' }}{% endif %}</td>
+      {% endfor %}
+      {% if is_admin %}
+      <td class="text-end">
+        <a class="btn btn-sm btn-outline-primary py-0" href="?edit={{ r[pk] }}">Sửa</a>
+        <form class="d-inline" method="post" action="{{ url_for('ql_delete', slug=slug, rid=r[pk]) }}"
+              onsubmit="return confirm('Xóa bản ghi #{{ r[pk] }}?')">
+          <button class="btn btn-sm btn-outline-danger py-0">Xóa</button></form>
+      </td>{% endif %}
+    </tr>
+  {% else %}<tr><td colspan="20" class="text-center text-muted py-4">Bảng trống.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="text-muted small mt-2">Quyền ADMIN: thêm/sửa/xóa. Ràng buộc khóa ngoại được CSDL kiểm tra — xóa bản ghi đang bị tham chiếu sẽ bị từ chối.</p>
+{% endblock %}
